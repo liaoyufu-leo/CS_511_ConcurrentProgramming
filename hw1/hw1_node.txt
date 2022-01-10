@@ -1,0 +1,19 @@
+读文件再写
+文件大小要是chunk的倍数， chunk 语块
+文件大小和chunk由输入决定
+
+chunk pattern是 abcde的混合排序
+chunk size：字母个数
+
+根据输入chunk数字，和pattern顺序，讲输入传到文件中
+
+readfile 读文件，并返还内容
+interval， 一堆证书，标志chunk的开始和结尾
+runswapper,创建interval，返回string
+writetofile, 写文件
+main 检查输入：（1）计算文件大小（2）读取pattern（3）检查chunk size 不能大于26（4）检查文件大小是否是chunk size的整数
+
+swapper 线程
+	offset:表示buffer的开始索引
+	interval:表示开始与结尾的索引
+	content
