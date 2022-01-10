@@ -1,6 +1,5 @@
 Header "%% Copyright (C)"
-       "%% @private"
-       "%% @Author Alejandro Russo".
+       "%% @private".
 
 
 Nonterminals line ipnumber unit.

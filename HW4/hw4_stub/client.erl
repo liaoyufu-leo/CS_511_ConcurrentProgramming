@@ -1,3 +1,6 @@
+% I pledge my honor that I have abided by the Stevens Honor System
+% YuFu Liao 10478967
+% JiYuan Xia 104683119
 -module(client).
 
 -export([main/1, initial_state/2]).
@@ -80,7 +83,7 @@ loop(State, Request, Ref) ->
 
 	%% GUI requests the nickname of client
 	whoami ->
-	    {{dummy_target, dummy_response}, State};
+		{State#cl_st.nick, State};
 
 	%% GUI requests to update nickname to Nick
 	{nick, Nick} ->
@@ -94,7 +97,7 @@ loop(State, Request, Ref) ->
 	%% from sender with nickname SenderNick
 	{incoming_msg, SenderNick, ChatName, Message} ->
 	    do_new_incoming_msg(State, Ref, SenderNick, ChatName, Message);
-
+	
 	{get_state} ->
 	    {{get_state, State}, State};
 
@@ -107,23 +110,72 @@ loop(State, Request, Ref) ->
 
 %% executes `/join` protocol from client perspective
 do_join(State, Ref, ChatName) ->
-    io:format("client:do_join(...): IMPLEMENT ME~n"),
-    {{dummy_target, dummy_response}, State}.
+	S = whereis(server),
+    G = whereis(list_to_atom(State#cl_st.gui)),
+	ChatRooms = State#cl_st.con_ch,
+	case maps:is_key(ChatName, ChatRooms) of
+		true ->
+			G!{result, self(), Ref, err},
+			UpdatedRooms = State#cl_st.con_ch;
+		false ->
+			S!{self(), Ref, join, ChatName},
+			receive
+				{ChatPid, Ref, connect, ChatHistory} ->
+					UpdatedRooms = maps:put(ChatName, ChatPid, State#cl_st.con_ch),
+					G!{result, self(), Ref, ChatHistory}
+			end
+	end,
+	{ok_msg_received, #cl_st{
+		gui = State#cl_st.gui,
+		nick = State#cl_st.nick,
+		con_ch = UpdatedRooms
+	}}.
+
 
 %% executes `/leave` protocol from client perspective
 do_leave(State, Ref, ChatName) ->
-    io:format("client:do_leave(...): IMPLEMENT ME~n"),
-    {{dummy_target, dummy_response}, State}.
+	S = whereis(server),
+	G = whereis(list_to_atom(State#cl_st.gui)),
+	case maps:is_key(ChatName, State#cl_st.con_ch) of
+		false ->
+			G!{result, self(), Ref, err},
+			{ok, State#cl_st{con_ch = maps:remove(ChatName, State#cl_st.con_ch)}};
+		true ->
+			S!{self(), Ref, leave, ChatName},
+			receive
+				{_From, Ref, ack_leave} ->
+					G!{result, self(), Ref, ok},
+					{ok, State#cl_st{con_ch = maps:remove(ChatName, State#cl_st.con_ch)}}
+			end
+	end.
 
 %% executes `/nick` protocol from client perspective
 do_new_nick(State, Ref, NewNick) ->
-    io:format("client:do_new_nick(...): IMPLEMENT ME~n"),
-    {{dummy_target, dummy_response}, State}.
+    S = whereis(server),
+	case NewNick == State#cl_st.nick of
+		false -> 
+			S!{self(), Ref, nick, NewNick},
+			receive
+				{_From, Ref, ok_nick} ->
+					{ok_nick, State#cl_st{nick = NewNick}};
+				{_From, Ref, err_nick_used} ->
+					{err_nick_used, State}
+			end;
+		true ->
+			{err_same, State}
+	end.
+			
 
 %% executes send message protocol from client perspective
 do_msg_send(State, Ref, ChatName, Message) ->
-    io:format("client:do_new_nick(...): IMPLEMENT ME~n"),
-    {{dummy_target, dummy_response}, State}.
+    Chatroom = maps:get(ChatName, State#cl_st.con_ch),
+	Chatroom!{self(), Ref, message, Message},
+	GuiPID = whereis(list_to_atom(State#cl_st.gui)),
+	receive
+		{_Chat, Ref, ack_msg} -> GuiPID!{result, self(), Ref, {msg_sent, State#cl_st.nick}},
+		{ok, State}
+	end.
+
 
 %% executes new incoming message protocol from client perspective
 do_new_incoming_msg(State, _Ref, CliNick, ChatName, Msg) ->
@@ -133,5 +185,11 @@ do_new_incoming_msg(State, _Ref, CliNick, ChatName, Msg) ->
 
 %% executes quit protocol from client perspective
 do_quit(State, Ref) ->
-    io:format("client:do_new_nick(...): IMPLEMENT ME~n"),
-    {{dummy_target, dummy_response}, State}.
+	GuiPID = whereis(list_to_atom(State#cl_st.gui)),
+	Server = whereis(server),
+	Server!{self(),Ref, quit},
+	receive
+		{_From, Ref, ack_quit} ->
+			GuiPID!{self(), Ref, ack_quit}
+	end,
+	{ok, State}.
